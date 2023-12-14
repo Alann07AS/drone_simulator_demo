@@ -1,0 +1,15 @@
+Drone instance and simulating part.
+
+Drone Fonctionality:
+    -Se deplacer d'un Point A à B.
+    -Decoler
+    -Atterire
+
+Drone property:
+    -id
+    -status
+    -position
+    -altitude
+    -vitesse
+    -v_max
+    -destination
