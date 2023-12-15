@@ -1,10 +1,16 @@
-#include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
 #include <vector>
 #include <array>
 #include <tuple>
 #include <Appi.h>
 #include <Drone.h>
+
+#include <HTTPSServer.hpp>
+#include <SSLCert.hpp>
+#include <HTTPRequest.hpp>
+#include <HTTPResponse.hpp>
+using namespace httpsserver;
+void send(HTTPResponse *res, int code, const String &contentType, const String &content);
 
 /* acount preset */
 String const DEFAULT_PASS = "1234"; // default password
@@ -191,18 +197,17 @@ void orderToJson(JsonObject &obj, const Order &order)
 /*____WEB_PART____*/
 
 const String UUID = "UUID";
-String getUserNameByUUID(AsyncWebServerRequest *request)
+String getUserNameByUUID(HTTPRequest *request)
 {
     // Get the request headers
-    AsyncWebHeader *header = request->getHeader("Cookie");
+    std::string cookieHeader = request->getHeader("Cookie");
 
-    if (header)
+    if (!cookieHeader.empty())
     {
-        printf("%s\n", header);
         // Parse the "Cookie" header to extract cookies
-        String cookies = header->value();
-        printf("%s\n", cookies);
+        String cookies(cookieHeader.c_str());
 
+        // looking for UUID name cookie
         int uuidIndex = cookies.indexOf(UUID);
 
         if (uuidIndex != -1)
@@ -231,77 +236,100 @@ String getUserNameByUUID(AsyncWebServerRequest *request)
 }
 
 // LOGIN
-void handleLogin(AsyncWebServerRequest *request)
+void handleLogin(HTTPRequest *req, HTTPResponse *res)
 {
     // Extract login and pass from form data
-    String log = request->arg("login");
-    String pass = request->arg("pass");
+    std::string log, pass;
 
-    // Perform login
-    const String uuid = login(pass, log);
-
-    if (uuid == "")
+    // Get parameters from the request
+    ResourceParameters *params = req->getParams();
+    if (params->getQueryParameter("login", log) && params->getQueryParameter("pass", pass))
     {
-        // Login failed
-        request->send(401, "text/plain", "Authentication failed");
+        // Perform login
+        String uuid = login(String(pass.c_str()), String(log.c_str()));
+
+        if (uuid.isEmpty())
+        {
+            // Login failed
+            send(res, 401, "text/plain", "Authentication failed");
+        }
+        else
+        {
+            // Login succeeded, set UUID cookie
+            uuid = UUID + "=" + uuid;
+            res->setHeader("Set-Cookie", uuid.c_str());
+            send(res, 200, "text/plain", "Login successful");
+        }
     }
     else
     {
-        // Login succeeded, set UUID cookie
-        AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "Login successful");
-        response->addHeader("Set-Cookie", UUID + "=" + uuid);
-        request->send(response);
+        // Missing or invalid parameters
+        send(res, 400, "text/plain", "Bad Request");
     }
 }
 
 // ORDER
-void handleOrder(AsyncWebServerRequest *request)
+void handleOrder(HTTPRequest *req, HTTPResponse *res)
 {
-    const String userName = getUserNameByUUID(request);
+    const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        request->send(401, "text/plain", "Unauthorized");
+        send(res, 401, "text/plain", "Unauthorized");
         return;
     }
-    String droneName = request->arg("droneName");
-    float startLatitude = request->arg("startLatitude").toFloat();
-    float startLongitude = request->arg("startLongitude").toFloat();
-    float destLatitude = request->arg("destLatitude").toFloat();
-    float destLongitude = request->arg("destLongitude").toFloat();
-
-    // The "UUID" cookie is present, continue with handling the order status
-    const Order::Error error = Order::newOrder(
-        userName,
-        droneName,
-        startLatitude,
-        startLongitude,
-        destLatitude,
-        destLongitude);
-
-    switch (error)
+    std::string paramDroneName, paramStartLatitude, paramStartLongitude, paramDestLatitude, paramDestLongitude;
+    ResourceParameters *params = req->getParams();
+    if (
+        params->getQueryParameter("droneName", paramDroneName) &&
+        params->getQueryParameter("startLatitude", paramStartLatitude) &&
+        params->getQueryParameter("startLongitude", paramStartLongitude) &&
+        params->getQueryParameter("destLatitude", paramDestLatitude) &&
+        params->getQueryParameter("destLongitude", paramDestLongitude))
     {
-    case Order::Error::NONE:
-        request->send(200, "text/plain", "Order register suces");
-        return;
-    case Order::Error::CLIENT_NOT_FOUND:
-        request->send(404, "text/plain", "Client not found");
-        return;
-    case Order::Error::DRONE_NOT_FOUND:
-        request->send(404, "text/plain", "Drone not found");
-        return;
-    case Order::Error::DRONE_UNVAIBLE:
-        request->send(403, "text/plain", "Drone unavailable");
-        return;
+        String droneName = String(paramDroneName.c_str());
+        float startLatitude = std::stof(paramStartLatitude);
+        float startLongitude = std::stof(paramStartLongitude);
+        float destLatitude = std::stof(paramDestLatitude);
+        float destLongitude = std::stof(paramDestLongitude);
+
+        // The "UUID" cookie is present, continue with handling the order status
+        const Order::Error error = Order::newOrder(
+            userName,
+            droneName,
+            startLatitude,
+            startLongitude,
+            destLatitude,
+            destLongitude);
+
+        switch (error)
+        {
+        case Order::Error::NONE:
+            send(res, 200, "text/plain", "Order register suces");
+            return;
+        case Order::Error::CLIENT_NOT_FOUND:
+            send(res, 404, "text/plain", "Client not found");
+            return;
+        case Order::Error::DRONE_NOT_FOUND:
+            send(res, 404, "text/plain", "Drone not found");
+            return;
+        case Order::Error::DRONE_UNVAIBLE:
+            send(res, 403, "text/plain", "Drone unavailable");
+            return;
+        }
+    }
+    else
+    {
+        send(res, 400, "text/plain", "Bad Request");
     }
 };
 
 // GET ORDERS
-void handleGetOrders(AsyncWebServerRequest *request)
+void handleGetOrders(HTTPRequest *req, HTTPResponse *res)
 {
-    const String userName = getUserNameByUUID(request);
+    const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        request->send(401, "text/plain", "Unauthorized");
+        send(res, 401, "text/plain", "Unauthorized");
         return;
     }
     DynamicJsonDocument doc(200); // doc(512)
@@ -320,94 +348,121 @@ void handleGetOrders(AsyncWebServerRequest *request)
     String jsonString;
     serializeJson(doc, jsonString);
 
-    request->send(200, "application/json", jsonString);
+    send(res, 200, "application/json", jsonString);
 };
 
 // GET ORDER STATUS + DRONE INFO
-void handleOrderStatus(AsyncWebServerRequest *request)
+void handleOrderStatus(HTTPRequest *req, HTTPResponse *res)
 {
-    const String userName = getUserNameByUUID(request);
+    const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        request->send(401, "text/plain", "Unauthorized");
+        send(res, 401, "text/plain", "Unauthorized");
         return;
     }
-    int orderId = request->arg("id").toInt();
-    const Order *order = Order::getOrderByUserNameAndId(userName, orderId);
-    const Drone *drone = order != NULL ? Drone::getDroneByName(order->droneName) : NULL;
-    if (order == NULL || drone == NULL)
+    ResourceParameters *params = req->getParams();
+    std::string paramId;
+    if (params->getQueryParameter("id", paramId))
     {
-        request->send(404, "text/plain", "Order or Drone NotFound");
-        return;
+        int orderId = std::stoi(paramId);
+        const Order *order = Order::getOrderByUserNameAndId(userName, orderId);
+        const Drone *drone = order != NULL ? Drone::getDroneByName(order->droneName) : NULL;
+        if (order == NULL || drone == NULL)
+        {
+            send(res, 404, "text/plain", "Order or Drone NotFound");
+            return;
+        }
+
+        DynamicJsonDocument doc(450); // doc(512)
+        JsonObject clientJo = doc.createNestedObject("client");
+        orderToJson(clientJo, *order);
+
+        JsonObject droneJo = doc.createNestedObject("drone");
+        droneToJson(droneJo, *drone);
+
+        String jsonString;
+        serializeJson(doc, jsonString);
+
+        send(res, 200, "application/json", jsonString);
     }
-
-    DynamicJsonDocument doc(450); // doc(512)
-    JsonObject clientJo = doc.createNestedObject("client");
-    orderToJson(clientJo, *order);
-
-    JsonObject droneJo = doc.createNestedObject("drone");
-    droneToJson(droneJo, *drone);
-
-    String jsonString;
-    serializeJson(doc, jsonString);
-
-    request->send(200, "application/json", jsonString);
+    else
+    {
+        send(res, 400, "text/plain", "Bad Request");
+    }
 };
 
 // CONFIM READY
-void handleSetOrderReady(AsyncWebServerRequest *request)
+void handleSetOrderReady(HTTPRequest *req, HTTPResponse *res)
 {
-    const String userName = getUserNameByUUID(request);
+    const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        request->send(401, "text/plain", "Unauthorized");
+        send(res, 401, "text/plain", "Unauthorized");
         return;
     }
-    int orderId = request->arg("id").toInt();
-    Serial.println("Et3");
-    Order *order = Order::getOrderByUserNameAndId(userName, orderId);
-    Serial.println("Et4");
-    Drone *drone = Drone::getDroneByName(order->droneName);
-    Serial.println("Et5");
-    if (order == NULL || drone == NULL || !order->emitPacket())
+    ResourceParameters *params = req->getParams();
+    std::string paramId;
+    if (params->getQueryParameter("id", paramId))
     {
-        request->send(404, "text/plain", "Order emit failed");
-        return;
+        int orderId = std::stoi(paramId);
+        Serial.println("Et3");
+        Order *order = Order::getOrderByUserNameAndId(userName, orderId);
+        Serial.println("Et4");
+        Drone *drone = Drone::getDroneByName(order->droneName);
+        Serial.println("Et5");
+        if (order == NULL || drone == NULL || !order->emitPacket())
+        {
+            send(res, 404, "text/plain", "Order emit failed");
+            return;
+        }
+        Serial.println("Et6");
+        drone->setDest(order->destLatitude, order->destLongitude);
+        drone->goToDest([order]()
+                        { order->status = Order::Status::DONE; });
+        send(res, 200, "text/plain", "Order emit suces");
     }
-    Serial.println("Et6");
-    drone->setDest(order->destLatitude, order->destLongitude);
-    drone->goToDest([order]()
-                    { order->status = Order::Status::DONE; });
-    request->send(200, "text/plain", "Order emit suces");
+    else
+    {
+        send(res, 400, "text/plain", "Bad Request");
+    }
 };
 
 // CONFIM RECIVE
-void handleSetOrderRecive(AsyncWebServerRequest *request)
+void handleSetOrderRecive(HTTPRequest *req, HTTPResponse *res)
 {
-    const String userName = getUserNameByUUID(request);
+    const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        request->send(401, "text/plain", "Unauthorized");
+        send(res, 401, "text/plain", "Unauthorized");
         return;
     }
-    int orderId = request->arg("id").toInt();
-    Order *order = Order::getOrderByUserNameAndId(userName, orderId);
-    if (order == NULL || !order->receivePacket())
+    ResourceParameters *params = req->getParams();
+    std::string paramId;
+    if (params->getQueryParameter("id", paramId))
     {
-        request->send(404, "text/plain", "Order recive failed");
-        return;
+        int orderId = std::stoi(paramId);
+        Order *order = Order::getOrderByUserNameAndId(userName, orderId);
+        if (order == NULL || !order->receivePacket())
+        {
+            send(res, 404, "text/plain", "Order recive failed");
+            return;
+        }
+        order->status = Order::Status::DONE;
+        send(res, 200, "text/plain", "Order recive suces");
     }
-    order->status = Order::Status::DONE;
-    request->send(200, "text/plain", "Order recive suces");
+    else
+    {
+        send(res, 400, "text/plain", "Bad Request");
+    }
 };
 
 // GET ALL DRONED INFO (pout le STYLE map de tout le TRAFIC)
-void handleGetAllDroneInfo(AsyncWebServerRequest *request)
+void handleGetAllDroneInfo(HTTPRequest *req, HTTPResponse *res)
 {
-    const String userName = getUserNameByUUID(request);
+    const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        request->send(401, "text/plain", "Unauthorized");
+        send(res, 401, "text/plain", "Unauthorized");
         return;
     }
     DynamicJsonDocument doc(200); // doc(512)
@@ -423,32 +478,85 @@ void handleGetAllDroneInfo(AsyncWebServerRequest *request)
     String jsonString;
     serializeJson(doc, jsonString);
 
-    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", jsonString);
-
-    // Set CORS headers
-    response->addHeader("Access-Control-Allow-Origin", "http://127.0.0.1:5500");
-    response->addHeader("Access-Control-Allow-Methods", "GET,OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type, Cookie");
-    response->addHeader("Access-Control-Allow-Credentials", "true");
-
-    request->send(response);
+    send(res, 200, "application/json", jsonString);
 };
 
-void initAppi(AsyncWebServer *server)
+// create random autocertified ssl
+void generateSsl(SSLCert *cert)
 {
+    Serial.println("Creating certificate...");
 
-    server->on("/order", HTTP_POST, handleOrder);
-    server->on("/orders", HTTP_GET, handleGetOrders);
-    server->on("/order/ready", HTTP_GET, handleSetOrderReady);
-    server->on("/order/recive", HTTP_GET, handleSetOrderRecive);
-    server->on("/order/status", HTTP_GET, handleOrderStatus);
-    server->on("/drones", HTTP_GET, handleGetAllDroneInfo);
-    server->on("/login", HTTP_POST, handleLogin);
-    server->onNotFound([](AsyncWebServerRequest *request){
-        request->send(404, "text/plain", "Nothing");
-    });
+    cert = new SSLCert();
 
-    server->begin();
-};
+    int createCertResult = createSelfSignedCert(
+        *cert,
+        KEYSIZE_2048,
+        "CN=myesp.local,O=acme,C=US");
+
+    if (createCertResult != 0)
+    {
+        Serial.printf("Error generating certificate");
+        return;
+    }
+
+    Serial.println("Certificate created with success");
+}
+
+void send(HTTPResponse *res, int code, const String &contentType, const String &content)
+{
+    res->setStatusCode(code);
+    res->setHeader("Content-Type", contentType.c_str());
+    res->printStd(content.c_str());
+    res->finalize();
+}
+
+SSLCert *cert;
+HTTPSServer *secureServer;
+void initAppi()
+{
+    generateSsl(cert);
+
+    secureServer = new HTTPSServer(cert);
+    secureServer->setDefaultHeader("Access-Control-Allow-Origin", "http://127.0.0.1:5500");
+    secureServer->setDefaultHeader("Access-Control-Allow-Methods", "GET, POST,OPTIONS");
+    secureServer->setDefaultHeader("Access-Control-Allow-Headers", "Content-Type, Cookie");
+    secureServer->setDefaultHeader("Access-Control-Allow-Credentials", "true");
+
+    ResourceNode *nodeOrder = new ResourceNode("/order", "POST", &handleOrder);
+    ResourceNode *nodeGetOrders = new ResourceNode("/orders", "GET", &handleGetOrders);
+    ResourceNode *nodeSetOrderReady = new ResourceNode("/order/ready", "GET", &handleSetOrderReady);
+    ResourceNode *nodeSetOrderRecive = new ResourceNode("/order/recive", "GET", &handleSetOrderRecive);
+    ResourceNode *nodeOrderStatus = new ResourceNode("/order/status", "GET", &handleOrderStatus);
+    ResourceNode *nodeGetAllDroneInfo = new ResourceNode("/drones", "GET", &handleGetAllDroneInfo);
+    ResourceNode *nodeLogin = new ResourceNode("/login", "POST", &handleLogin);
+    ResourceNode *node404 = new ResourceNode("", "", [](HTTPRequest *req, HTTPResponse *res)
+                                             { send(res, 404, "text/plain", "Bad Request"); });
+    secureServer->registerNode(nodeOrder);
+    secureServer->registerNode(nodeGetOrders);
+    secureServer->registerNode(nodeSetOrderReady);
+    secureServer->registerNode(nodeSetOrderRecive);
+    secureServer->registerNode(nodeOrderStatus);
+    secureServer->registerNode(nodeGetAllDroneInfo);
+    secureServer->registerNode(nodeLogin);
+
+    secureServer->setDefaultNode(node404);
+
+    Serial.println("Starting server...");
+    secureServer->start();
+    if (secureServer->isRunning())
+    {
+        Serial.println("Server ready.");
+
+        // "loop()" function of the separate task
+        while (true)
+        {
+            // This call will let the server do its work
+            secureServer->loop();
+
+            // Other code would go here...
+            delay(1);
+        }
+    }
+}
 
 /*________________*/

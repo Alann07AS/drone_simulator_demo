@@ -1,9 +1,5 @@
 // Appi.h
-#ifndef APPI_H
-#define APPI_H
-#include <ESPAsyncWebServer.h>
 
 /*____WEB_PART____*/
-void initAppi(AsyncWebServer* server);
+void initAppi();
 /*________________*/
-#endif // APPI_H
