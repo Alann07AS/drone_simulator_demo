@@ -2,10 +2,13 @@
 #include <Drone.h>
 #include <Appi.h>
 
+
 // const char *ssid = "CampusExtended";
-const char *ssid = "Alann_Wifi";
 // const char *password = "Challenges";
-const char *password = "Alann007";
+const char *ssid = "Bbox-8CDF86FA";
+const char *password = "ZWHAdaqsYxD9FjH3dJ";
+// const char *ssid = "Alann_Wifi";
+// const char *password = "Alann007";
 
 void WifiSetup()
 {
@@ -20,8 +23,6 @@ void WifiSetup()
     Serial.print("\nConnected to WiFi. IP: http://");
     Serial.println(WiFi.localIP().toString());
 }
-
-
 
 
 // AsyncWebServer server(80);

@@ -482,14 +482,14 @@ void handleGetAllDroneInfo(HTTPRequest *req, HTTPResponse *res)
 };
 
 // create random autocertified ssl
-void generateSsl(SSLCert *cert)
+void generateSsl(SSLCert **cert)
 {
     Serial.println("Creating certificate...");
 
-    cert = new SSLCert();
+    *cert = new SSLCert();
 
     int createCertResult = createSelfSignedCert(
-        *cert,
+        **cert,
         KEYSIZE_2048,
         "CN=myesp.local,O=acme,C=US");
 
@@ -510,16 +510,36 @@ void send(HTTPResponse *res, int code, const String &contentType, const String &
     res->finalize();
 }
 
-SSLCert *cert;
+
+extern const uint8_t myCertData[];
+extern const uint16_t myCertLength;
+extern const uint8_t myPKData[];
+extern const uint16_t myPKLength;
+
+// SSLCert mySSLCert(myCertData, myCertLength, myPKData, myPKLe);
+
+
+#include <fullchain.h>
+#include <privkey.h>
+
+SSLCert *cert = new SSLCert(
+    fullchain_pem, fullchain_pem_len,
+    privkey_pem, privkey_pem_len
+);
+
+
+// SSLCert *cert;
 HTTPSServer *secureServer;
 void initAppi()
-{
-    generateSsl(cert);
+{   
+    // generateSsl(&cert);
+    // cert = new SSLCert(server_crt_DER, server_crt_DER_len, server_key_DER, server_key_DER_len);
 
     secureServer = new HTTPSServer(cert);
-    secureServer->setDefaultHeader("Access-Control-Allow-Origin", "http://127.0.0.1:5500");
-    secureServer->setDefaultHeader("Access-Control-Allow-Methods", "GET, POST,OPTIONS");
-    secureServer->setDefaultHeader("Access-Control-Allow-Headers", "Content-Type, Cookie");
+    // secureServer->setDefaultHeader("Access-Control-Allow-Origin", "http://127.0.0.1:5500");
+    secureServer->setDefaultHeader("Access-Control-Allow-Origin", "*");
+    secureServer->setDefaultHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
+    secureServer->setDefaultHeader("Access-Control-Allow-Headers", "Content-Type,Cookie");
     secureServer->setDefaultHeader("Access-Control-Allow-Credentials", "true");
 
     ResourceNode *nodeOrder = new ResourceNode("/order", "POST", &handleOrder);
@@ -530,7 +550,7 @@ void initAppi()
     ResourceNode *nodeGetAllDroneInfo = new ResourceNode("/drones", "GET", &handleGetAllDroneInfo);
     ResourceNode *nodeLogin = new ResourceNode("/login", "POST", &handleLogin);
     ResourceNode *node404 = new ResourceNode("", "", [](HTTPRequest *req, HTTPResponse *res)
-                                             { send(res, 404, "text/plain", "Bad Request"); });
+                                             { send(res, 404, "text/plain", "Bad Request 404"); });
     secureServer->registerNode(nodeOrder);
     secureServer->registerNode(nodeGetOrders);
     secureServer->registerNode(nodeSetOrderReady);

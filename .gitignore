@@ -3,3 +3,6 @@
 .vscode/c_cpp_properties.json
 .vscode/launch.json
 .vscode/ipch
+include/certs
+lib/appi/fullchain.h
+lib/appi/privkey.h
