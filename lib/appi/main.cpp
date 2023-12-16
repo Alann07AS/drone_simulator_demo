@@ -20,7 +20,7 @@ std::array<String, 3> const admin = {"admin", DEFAULT_PASS, "dac9218f-8745-4f6b-
 
 std::array<std::array<String, 3>, 3> const USERS = {client1, client2, admin};
 
-bool isClientByName(String clientName)
+bool isClientByName(const String &clientName)
 {
     for (const std::array<String, 3> &user : USERS)
     {
@@ -33,7 +33,7 @@ bool isClientByName(String clientName)
 }
 
 // return UUID if credential is corect
-String login(String pass, String login)
+String login(const String &pass, const String &login)
 {
     for (const std::array<String, 3> &user : USERS)
     {
@@ -236,14 +236,70 @@ String getUserNameByUUID(HTTPRequest *request)
 }
 
 // LOGIN
+// void handleLogin(HTTPRequest *req, HTTPResponse *res)
+// {
+//     // Extract login and pass from form data
+//     std::string log, pass;
+
+//     // Get parameters from the request
+//     ResourceParameters *params = req->getParams();
+//     if (params->getQueryParameter("login", log) && params->getQueryParameter("pass", pass))
+//     {
+//         // Perform login
+//         String uuid = login(String(pass.c_str()), String(log.c_str()));
+
+//         if (uuid.isEmpty())
+//         {
+//             // Login failed
+//             send(res, 401, "text/plain", "Authentication failed");
+//         }
+//         else
+//         {
+//             // Login succeeded, set UUID cookie
+//             uuid = UUID + "=" + uuid;
+//             res->setHeader("Set-Cookie", uuid.c_str());
+//             send(res, 200, "text/plain", "Login successful");
+//         }
+//     }
+//     else
+//     {
+//         // Missing or invalid parameters
+//         send(res, 400, "text/plain", "Bad Request");
+//     }
+// }
+
+#include <HTTPURLEncodedBodyParser.hpp>
+
+// LOGIN
 void handleLogin(HTTPRequest *req, HTTPResponse *res)
 {
+    // Use HTTPURLEncodedBodyParser to parse form data
+    HTTPURLEncodedBodyParser parser(req);
+
     // Extract login and pass from form data
     std::string log, pass;
 
-    // Get parameters from the request
-    ResourceParameters *params = req->getParams();
-    if (params->getQueryParameter("login", log) && params->getQueryParameter("pass", pass))
+    // Iterate over form fields
+    while (parser.nextField())
+    {
+        std::string name = parser.getFieldName();
+        // Check field name and assign values
+        if (name == "login")
+        {
+            char buf[512];
+            size_t readLength = parser.read((byte *)buf, 512);
+            log = std::string(buf, readLength);
+        }
+        else if (name == "pass")
+        {
+            char buf[512];
+            size_t readLength = parser.read((byte *)buf, 512);
+            pass = std::string(buf, readLength);
+        }
+    }
+
+    // Check if both login and pass are present
+    if (!log.empty() && !pass.empty())
     {
         // Perform login
         String uuid = login(String(pass.c_str()), String(log.c_str()));
@@ -405,17 +461,13 @@ void handleSetOrderReady(HTTPRequest *req, HTTPResponse *res)
     if (params->getQueryParameter("id", paramId))
     {
         int orderId = std::stoi(paramId);
-        Serial.println("Et3");
         Order *order = Order::getOrderByUserNameAndId(userName, orderId);
-        Serial.println("Et4");
         Drone *drone = Drone::getDroneByName(order->droneName);
-        Serial.println("Et5");
         if (order == NULL || drone == NULL || !order->emitPacket())
         {
             send(res, 404, "text/plain", "Order emit failed");
             return;
         }
-        Serial.println("Et6");
         drone->setDest(order->destLatitude, order->destLongitude);
         drone->goToDest([order]()
                         { order->status = Order::Status::DONE; });
@@ -510,7 +562,6 @@ void send(HTTPResponse *res, int code, const String &contentType, const String &
     res->finalize();
 }
 
-
 extern const uint8_t myCertData[];
 extern const uint16_t myCertLength;
 extern const uint8_t myPKData[];
@@ -518,20 +569,18 @@ extern const uint16_t myPKLength;
 
 // SSLCert mySSLCert(myCertData, myCertLength, myPKData, myPKLe);
 
-
 #include <fullchain.h>
 #include <privkey.h>
 
 SSLCert *cert = new SSLCert(
     fullchain_pem, fullchain_pem_len,
-    privkey_pem, privkey_pem_len
-);
-
+    privkey_pem, privkey_pem_len);
 
 // SSLCert *cert;
 HTTPSServer *secureServer;
+
 void initAppi()
-{   
+{
     // generateSsl(&cert);
     // cert = new SSLCert(server_crt_DER, server_crt_DER_len, server_key_DER, server_key_DER_len);
 
