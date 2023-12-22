@@ -89,6 +89,13 @@ public:
         {
             return Error::CLIENT_NOT_FOUND;
         }
+        for (auto &&order : orders)
+        {
+            if (order.status != DONE  && order.droneName == droneName)
+            {
+                return Error::DRONE_UNVAIBLE;
+            }
+        }
         if (drone->status != Drone::Status::LAND)
         {
             return Error::DRONE_UNVAIBLE;
@@ -185,13 +192,21 @@ void droneToJson(JsonObject &obj, const Drone &drone)
 void orderToJson(JsonObject &obj, const Order &order)
 {
     obj["id"] = order.id;
+    Serial.printf("order.id: %d\n", order.id);
     obj["status"] = order.status;
+    Serial.printf("order.status: %d\n", order.status);
     obj["clientName"] = order.clientName;
+    Serial.printf("order.clientName: %s\n", order.clientName);
     obj["droneName"] = order.droneName;
+    Serial.printf("order.droneName: %s\n", order.droneName);
     obj["startLatitude"] = order.startLatitude;
+    Serial.printf("order.startLatitude: %f\n", order.startLatitude);
     obj["startLongitude"] = order.startLongitude;
+    Serial.printf("order.startLongitude: %f\n", order.startLongitude);
     obj["destLatitude"] = order.destLatitude;
+    Serial.printf("order.destLatitude: %f\n", order.destLatitude);
     obj["destLongitude"] = order.destLongitude;
+    Serial.printf("order.destLongitude: %f\n", order.destLongitude);
 }
 
 /*____WEB_PART____*/
@@ -201,7 +216,7 @@ String getUserNameByUUID(HTTPRequest *request)
 {
     // Get the request headers
     std::string cookieHeader = request->getHeader("Cookie");
-
+    Serial.println(cookieHeader.c_str());
     if (!cookieHeader.empty())
     {
         // Parse the "Cookie" header to extract cookies
@@ -251,24 +266,26 @@ String getUserNameByUUID(HTTPRequest *request)
 //         if (uuid.isEmpty())
 //         {
 //             // Login failed
-//             send(res, 401, "text/plain", "Authentication failed");
+//             send(res, 401, TEXT_PLAIN, "Authentication failed");
 //         }
 //         else
 //         {
 //             // Login succeeded, set UUID cookie
 //             uuid = UUID + "=" + uuid;
 //             res->setHeader("Set-Cookie", uuid.c_str());
-//             send(res, 200, "text/plain", "Login successful");
+//             send(res, 200, TEXT_PLAIN, "Login successful");
 //         }
 //     }
 //     else
 //     {
 //         // Missing or invalid parameters
-//         send(res, 400, "text/plain", "Bad Request");
+//         send(res, 400, TEXT_PLAIN, "Bad Request");
 //     }
 // }
 
 #include <HTTPURLEncodedBodyParser.hpp>
+String const TEXT_PLAIN = "text/plain";
+String const APPLICATION_JSON = "application/json";
 
 // LOGIN
 void handleLogin(HTTPRequest *req, HTTPResponse *res)
@@ -307,20 +324,28 @@ void handleLogin(HTTPRequest *req, HTTPResponse *res)
         if (uuid.isEmpty())
         {
             // Login failed
-            send(res, 401, "text/plain", "Authentication failed");
+            send(res, 401, TEXT_PLAIN, "Authentication failed");
         }
         else
         {
             // Login succeeded, set UUID cookie
-            uuid = UUID + "=" + uuid;
+            // uuid = UUID + "=" + uuid;
+            // res->setHeader("Set-Cookie", uuid.c_str());
+            uuid = "UUID=" + uuid; // + "; Secure; HttpOnly; Path=/; Domain=http://192.168.1.55:5500";
             res->setHeader("Set-Cookie", uuid.c_str());
-            send(res, 200, "text/plain", "Login successful");
+            DynamicJsonDocument doc(80); // doc(200)
+            doc["UUID"] = uuid.c_str();
+            doc["log"] = log;
+            String jsonString;
+            serializeJson(doc, jsonString);
+
+            send(res, 200, APPLICATION_JSON, jsonString);
         }
     }
     else
     {
         // Missing or invalid parameters
-        send(res, 400, "text/plain", "Bad Request");
+        send(res, 400, TEXT_PLAIN, "Bad Request");
     }
 }
 
@@ -330,17 +355,50 @@ void handleOrder(HTTPRequest *req, HTTPResponse *res)
     const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        send(res, 401, "text/plain", "Unauthorized");
+        send(res, 401, TEXT_PLAIN, "Unauthorized");
         return;
     }
+    // Extract login and pass from form data
     std::string paramDroneName, paramStartLatitude, paramStartLongitude, paramDestLatitude, paramDestLongitude;
-    ResourceParameters *params = req->getParams();
+
+    // Use HTTPURLEncodedBodyParser to parse form data
+    HTTPURLEncodedBodyParser parser(req);
+
+    // Iterate over form fields
+    while (parser.nextField())
+    {
+        std::string name = parser.getFieldName();
+
+        char buf[512];
+        size_t readLength = parser.read((byte *)buf, 512);
+        if (name == "droneName")
+        {
+            paramDroneName = std::string(buf, readLength);
+        }
+        else if (name == "startLatitude")
+        {
+            paramStartLatitude = std::string(buf, readLength);
+        }
+        else if (name == "startLongitude")
+        {
+            paramStartLongitude = std::string(buf, readLength);
+        }
+        else if (name == "destLatitude")
+        {
+            paramDestLatitude = std::string(buf, readLength);
+        }
+        else if (name == "destLongitude")
+        {
+            paramDestLongitude = std::string(buf, readLength);
+        }
+    }
+
     if (
-        params->getQueryParameter("droneName", paramDroneName) &&
-        params->getQueryParameter("startLatitude", paramStartLatitude) &&
-        params->getQueryParameter("startLongitude", paramStartLongitude) &&
-        params->getQueryParameter("destLatitude", paramDestLatitude) &&
-        params->getQueryParameter("destLongitude", paramDestLongitude))
+        !paramDroneName.empty() &&
+        !paramStartLatitude.empty() &&
+        !paramStartLongitude.empty() &&
+        !paramDestLatitude.empty() &&
+        !paramDestLongitude.empty())
     {
         String droneName = String(paramDroneName.c_str());
         float startLatitude = std::stof(paramStartLatitude);
@@ -360,22 +418,22 @@ void handleOrder(HTTPRequest *req, HTTPResponse *res)
         switch (error)
         {
         case Order::Error::NONE:
-            send(res, 200, "text/plain", "Order register suces");
+            send(res, 200, TEXT_PLAIN, "Order register suces");
             return;
         case Order::Error::CLIENT_NOT_FOUND:
-            send(res, 404, "text/plain", "Client not found");
+            send(res, 404, TEXT_PLAIN, "Client not found");
             return;
         case Order::Error::DRONE_NOT_FOUND:
-            send(res, 404, "text/plain", "Drone not found");
+            send(res, 404, TEXT_PLAIN, "Drone not found");
             return;
         case Order::Error::DRONE_UNVAIBLE:
-            send(res, 403, "text/plain", "Drone unavailable");
+            send(res, 403, TEXT_PLAIN, "Drone unavailable");
             return;
         }
     }
     else
     {
-        send(res, 400, "text/plain", "Bad Request");
+        send(res, 400, TEXT_PLAIN, "Bad Request");
     }
 };
 
@@ -385,7 +443,7 @@ void handleGetOrders(HTTPRequest *req, HTTPResponse *res)
     const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        send(res, 401, "text/plain", "Unauthorized");
+        send(res, 401, TEXT_PLAIN, "Unauthorized");
         return;
     }
     DynamicJsonDocument doc(200); // doc(512)
@@ -394,8 +452,10 @@ void handleGetOrders(HTTPRequest *req, HTTPResponse *res)
     // Iterate through drones and add each one to the array
     for (const Order &order : Order::orders)
     {
+        Serial.print(order.id);
         if (order.clientName == userName)
         {
+
             JsonObject orderJo = ordersJa.createNestedObject();
             orderToJson(orderJo, order);
         }
@@ -404,7 +464,7 @@ void handleGetOrders(HTTPRequest *req, HTTPResponse *res)
     String jsonString;
     serializeJson(doc, jsonString);
 
-    send(res, 200, "application/json", jsonString);
+    send(res, 200, APPLICATION_JSON, jsonString);
 };
 
 // GET ORDER STATUS + DRONE INFO
@@ -413,7 +473,7 @@ void handleOrderStatus(HTTPRequest *req, HTTPResponse *res)
     const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        send(res, 401, "text/plain", "Unauthorized");
+        send(res, 401, TEXT_PLAIN, "Unauthorized");
         return;
     }
     ResourceParameters *params = req->getParams();
@@ -425,7 +485,7 @@ void handleOrderStatus(HTTPRequest *req, HTTPResponse *res)
         const Drone *drone = order != NULL ? Drone::getDroneByName(order->droneName) : NULL;
         if (order == NULL || drone == NULL)
         {
-            send(res, 404, "text/plain", "Order or Drone NotFound");
+            send(res, 404, TEXT_PLAIN, "Order or Drone NotFound");
             return;
         }
 
@@ -439,11 +499,11 @@ void handleOrderStatus(HTTPRequest *req, HTTPResponse *res)
         String jsonString;
         serializeJson(doc, jsonString);
 
-        send(res, 200, "application/json", jsonString);
+        send(res, 200, APPLICATION_JSON, jsonString);
     }
     else
     {
-        send(res, 400, "text/plain", "Bad Request");
+        send(res, 400, TEXT_PLAIN, "Bad Request");
     }
 };
 
@@ -453,7 +513,7 @@ void handleSetOrderReady(HTTPRequest *req, HTTPResponse *res)
     const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        send(res, 401, "text/plain", "Unauthorized");
+        send(res, 401, TEXT_PLAIN, "Unauthorized");
         return;
     }
     ResourceParameters *params = req->getParams();
@@ -462,20 +522,21 @@ void handleSetOrderReady(HTTPRequest *req, HTTPResponse *res)
     {
         int orderId = std::stoi(paramId);
         Order *order = Order::getOrderByUserNameAndId(userName, orderId);
-        Drone *drone = Drone::getDroneByName(order->droneName);
-        if (order == NULL || drone == NULL || !order->emitPacket())
+        // Drone *drone = Drone::getDroneByName(order->droneName);
+        // drone == NULL ||
+        if (order == NULL || !order->emitPacket())
         {
-            send(res, 404, "text/plain", "Order emit failed");
+            send(res, 404, TEXT_PLAIN, "Order emit failed");
             return;
         }
-        drone->setDest(order->destLatitude, order->destLongitude);
-        drone->goToDest([order]()
-                        { order->status = Order::Status::DONE; });
-        send(res, 200, "text/plain", "Order emit suces");
+        // drone->setDest(order->destLatitude, order->destLongitude);
+        // drone->goToDest([order]()
+        //                 { order->status = Order::Status::DONE; });
+        send(res, 200, TEXT_PLAIN, "Order emit suces");
     }
     else
     {
-        send(res, 400, "text/plain", "Bad Request");
+        send(res, 400, TEXT_PLAIN, "Bad Request");
     }
 };
 
@@ -485,7 +546,7 @@ void handleSetOrderRecive(HTTPRequest *req, HTTPResponse *res)
     const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        send(res, 401, "text/plain", "Unauthorized");
+        send(res, 401, TEXT_PLAIN, "Unauthorized");
         return;
     }
     ResourceParameters *params = req->getParams();
@@ -496,15 +557,15 @@ void handleSetOrderRecive(HTTPRequest *req, HTTPResponse *res)
         Order *order = Order::getOrderByUserNameAndId(userName, orderId);
         if (order == NULL || !order->receivePacket())
         {
-            send(res, 404, "text/plain", "Order recive failed");
+            send(res, 404, TEXT_PLAIN, "Order recive failed");
             return;
         }
         order->status = Order::Status::DONE;
-        send(res, 200, "text/plain", "Order recive suces");
+        send(res, 200, TEXT_PLAIN, "Order recive suces");
     }
     else
     {
-        send(res, 400, "text/plain", "Bad Request");
+        send(res, 400, TEXT_PLAIN, "Bad Request");
     }
 };
 
@@ -514,7 +575,7 @@ void handleGetAllDroneInfo(HTTPRequest *req, HTTPResponse *res)
     const String userName = getUserNameByUUID(req);
     if (userName == "")
     {
-        send(res, 401, "text/plain", "Unauthorized");
+        send(res, 401, TEXT_PLAIN, "Unauthorized");
         return;
     }
     DynamicJsonDocument doc(200); // doc(512)
@@ -530,7 +591,7 @@ void handleGetAllDroneInfo(HTTPRequest *req, HTTPResponse *res)
     String jsonString;
     serializeJson(doc, jsonString);
 
-    send(res, 200, "application/json", jsonString);
+    send(res, 200, APPLICATION_JSON, jsonString);
 };
 
 // create random autocertified ssl
@@ -570,7 +631,9 @@ extern const uint16_t myPKLength;
 // SSLCert mySSLCert(myCertData, myCertLength, myPKData, myPKLe);
 
 #include <fullchain.h>
+// #include <fullchainbourg.h>
 #include <privkey.h>
+// #include <privkeybourg.h>
 
 SSLCert *cert = new SSLCert(
     fullchain_pem, fullchain_pem_len,
@@ -585,8 +648,8 @@ void initAppi()
     // cert = new SSLCert(server_crt_DER, server_crt_DER_len, server_key_DER, server_key_DER_len);
 
     secureServer = new HTTPSServer(cert);
-    // secureServer->setDefaultHeader("Access-Control-Allow-Origin", "http://127.0.0.1:5500");
-    secureServer->setDefaultHeader("Access-Control-Allow-Origin", "*");
+    secureServer->setDefaultHeader("Access-Control-Allow-Origin", "http://127.0.0.1:5500");
+    // secureServer->setDefaultHeader("Access-Control-Allow-Origin", "*");
     secureServer->setDefaultHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
     secureServer->setDefaultHeader("Access-Control-Allow-Headers", "Content-Type,Cookie");
     secureServer->setDefaultHeader("Access-Control-Allow-Credentials", "true");
@@ -599,7 +662,7 @@ void initAppi()
     ResourceNode *nodeGetAllDroneInfo = new ResourceNode("/drones", "GET", &handleGetAllDroneInfo);
     ResourceNode *nodeLogin = new ResourceNode("/login", "POST", &handleLogin);
     ResourceNode *node404 = new ResourceNode("", "", [](HTTPRequest *req, HTTPResponse *res)
-                                             { send(res, 404, "text/plain", "Bad Request 404"); });
+                                             { send(res, 404, TEXT_PLAIN, "Bad Request 404"); });
     secureServer->registerNode(nodeOrder);
     secureServer->registerNode(nodeGetOrders);
     secureServer->registerNode(nodeSetOrderReady);

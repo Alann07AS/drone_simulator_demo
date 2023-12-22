@@ -68,7 +68,7 @@ bool Drone::travel()
     float speedms = max_speed * 1000.0 / 3600.0; // convertion m/S
     // speed = speedms;
     float azimut = calculateAzimuth(latitude, longitude, destLatitude, destLongitude);
-    speed = azimut;
+    speed = max_speed;
     // implementer aceleration 2m/s ?
     // while (std::abs(latitude - destLatitude) > 0.0001 || std::abs(longitude - destLongitude) > 0.0001)
     while (std::abs(destLongitude - longitude) > 0.001 || std::abs(destLatitude - latitude) > 0.001)
@@ -90,6 +90,7 @@ bool Drone::travel()
     }
     longitude = destLongitude;
     latitude = destLatitude;
+    speed = 0;
     status = STATIC; // Set status back to STATIC when the travel is complete
     return true;
 }

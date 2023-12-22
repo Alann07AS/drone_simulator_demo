@@ -7,7 +7,7 @@
 
 int const DEFAULT_ASSENCION_SPEED = 10;
 int const DEFAULT_FLOOR_ALTIDUE = 100;
-int const DEFAULT_FLIGHT_ALTIDUE = 200;//250;
+int const DEFAULT_FLIGHT_ALTIDUE = 250;//250;
 int const DEFAULT_MAX_SPEED = 230;//130;
 
 class Drone

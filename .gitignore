@@ -4,5 +4,5 @@
 .vscode/launch.json
 .vscode/ipch
 include/certs
-lib/appi/fullchain.h
-lib/appi/privkey.h
+lib/appi/fullchain*
+lib/appi/privkey*

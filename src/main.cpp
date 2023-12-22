@@ -5,14 +5,14 @@
 // const char *ssid = "CampusExtended";
 // const char *password = "Challenges";
 
-// const char *ssid = "Bbox-8CDF86FA";
-// const char *password = "ZWHAdaqsYxD9FjH3dJ";
+const char *ssid = "Bbox-8CDF86FA";
+const char *password = "ZWHAdaqsYxD9FjH3dJ";
 
 // const char *ssid = "Alann_Wifi";
 // const char *password = "Alann007";
 
-const char *ssid = "Livebox-8EF2";
-const char *password = "6D3DEFD9A2156CC62E6A269A52";
+// const char *ssid = "Livebox-8EF2";
+// const char *password = "6D3DEFD9A2156CC62E6A269A52";
 
 void WifiSetup()
 {
@@ -38,8 +38,12 @@ void setup()
     // Set initial drone attributes
     Drone(
         "VTOL",
-        44.741436,
-        4.745028);
+        49.441329,
+        1.072679);
+    Drone(
+        "MODEL2",
+        49.441330,
+        1.072679);
 
     WifiSetup();
 
