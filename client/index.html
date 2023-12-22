@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carte avec Marqueur</title>
+    <!-- Inclure Leaflet -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <link rel="stylesheet" href="style.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+    <script src="mini_framework.js"></script>
+    <script src="data.js"></script>
+    <script src="app.js"></script>
+    <link rel="shortcut icon" href="drone.ico" type="image/x-icon">
+</head>
+
+<body>
+
+    <form action="" method="post" id="login_form" class="border" style="display: none;">
+        <div>
+            <label for="login">Login:</label>
+            <input type="text" name="login">
+        </div>
+        <div>
+            <label for="password">Password:</label>
+            <input type="password" name="pass">
+        </div>
+
+        <button type="submit">Login</button>
+    </form>
+
+
+    <header>
+        <img src="https://delivrone.fr/wp-content/uploads/2021/11/cropped-logo-delivrone-long-438x80-2.png"
+            alt="logo delivrone">
+        <script src="elements/log_bt.js"></script>
+    </header>
+
+
+    <main>
+
+        <div class="divmap">
+            <!-- Conteneur de la carte -->
+            <div class="div border margin" style="height: 50vh; overflow: hidden">
+                <div id="map" style="height: 100%; width: 100%;"></div>
+            </div>
+
+            <!-- Listes des drones -->
+            <div class="div drones border margin">
+                <script src="elements/drones.js"></script>
+            </div>
+        </div>
+
+        <div class="divorders">
+            <!-- Cree une commande -->
+            <form action="" method="post" id="takeorder">
+
+                <label for="droneName">Choose a drone:</label>
+                <select name="droneName">
+                    <option value="">--Please choose a Drone--</option>
+                    <script src="elements/dronesoption.js"></script>
+                </select>
+
+                <label for="pet-select">depart latitude: </label>
+                <input name="startLatitude" type="number" value="49.440233" step="0.000001" min="-90" max="90" />
+                <label for="pet-select">depart longitute: </label>
+                <input name="startLongitude" type="number" value="1.110922" step="0.000001" min="-180" max="180" />
+
+                <label for="pet-select">destination latitude: </label>
+                <input name="destLatitude" type="number" value="49.437628" step="0.000001" min="-90" max="90" />
+                <label for="pet-select">destination longitute: </label>
+                <input name="destLongitude" type="number" value="1.147822" step="0.000001" min="-180" max="180" />
+
+                <button type="submit">TakeOrder</button>
+            </form>
+
+            <!-- listes des commande et status commande -->
+            <div class="orders border">
+                <script src="elements/orders.js"></script>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Script pour afficher la carte avec un marqueur -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            map = L.map('map').setView([51.5, -0.09], 13);
+
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // const LeafIcon = L.Icon.extend({
+        //     options: {
+        //         shadowUrl: 'https://leafletjs.com/examples/custom-icons/leaf-shadow.png',
+        //         iconSize: [38, 95],
+        //         shadowSize: [50, 64],
+        //         iconAnchor: [22, 94],
+        //         shadowAnchor: [4, 62],
+        //         popupAnchor: [-3, -76]
+        //     }
+        // });
+
+        // const greenIcon = new LeafIcon({ iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-green.png' });
+        // const redIcon = new LeafIcon({ iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-red.png' });
+        // const orangeIcon = new LeafIcon({ iconUrl: 'https://leafletjs.com/examples/custom-icons/leaf-orange.png' });
+
+        // const mGreen = L.marker([51.5, -0.09], { icon: greenIcon }).bindPopup('I am a green leaf.').addTo(map);
+        // const mRed = L.marker([51.495, -0.083], { icon: redIcon }).bindPopup('I am a red leaf.').addTo(map);
+        // const mOrange = L.marker([51.49, -0.1], { icon: orangeIcon }).bindPopup('I am an orange leaf.').addTo(map);
+
+        });
+
+    </script>
+
+</body>
+
+</html>
